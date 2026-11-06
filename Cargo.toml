@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/rot_core", "crates/rot_web"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["rot-lab contributors"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

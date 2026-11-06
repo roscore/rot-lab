@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="3D rotation converter and visualizer for robotics: quaternion (wxyz/xyzw), 12 Euler sequences, matrix, axis-angle, rotation vector, 6D.">
+<meta name="color-scheme" content="light dark">
+<title>rot-lab</title>
+<link data-trunk rel="rust" href="crates/rot_web/Cargo.toml" data-bin="rot_web" data-wasm-opt="z">
+<link data-trunk rel="css" href="web/style.css">
+<link data-trunk rel="copy-file" href="web/boot.js">
+<link data-trunk rel="copy-file" href="web/favicon.svg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>rot-lab</h1>
+    <p class="tagline" data-i18n="tagline">3D rotation converter &amp; visualizer for robotics</p>
+  </div>
+  <div class="top-actions">
+    <button id="share" type="button" data-i18n="share">Copy share link</button>
+    <button id="lang" type="button" aria-label="Language">한국어</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button type="button" role="tab" data-tab="conv" class="active" data-i18n="tab_conv">Converter</button>
+  <button type="button" role="tab" data-tab="comp" data-i18n="tab_comp">Compose &amp; compare</button>
+  <button type="button" role="tab" data-tab="batch" data-i18n="tab_batch">Batch</button>
+  <button type="button" role="tab" data-tab="help" data-i18n="tab_help">Conventions</button>
+</nav>
+
+<main>
+<noscript><p class="warn">rot-lab needs JavaScript + WebAssembly (everything runs locally in your browser).</p></noscript>
+<p id="loading" class="muted" data-i18n="loading">Loading…</p>
+
+<!-- ============ Converter ============ -->
+<section id="tab-conv" class="tab">
+  <div class="grid">
+    <div class="col">
+      <div class="card">
+        <h2 data-i18n="presets">Presets</h2>
+        <div class="row wrap">
+          <button type="button" data-preset="urdf">URDF rpy</button>
+          <button type="button" data-preset="ros">ROS tf quaternion (xyzw)</button>
+          <button type="button" data-preset="mujoco">MuJoCo quat (wxyz)</button>
+          <button type="button" data-preset="aero" data-i18n="preset_aero">Aerospace ZYX yaw-pitch-roll</button>
+        </div>
+        <p id="preset-note" class="note" hidden></p>
+      </div>
+
+      <div class="card" id="card-q">
+        <div class="card-head">
+          <h2 data-i18n="quat">Quaternion</h2>
+          <label class="inline"><span data-i18n="order">Order</span>
+            <select id="q-order">
+              <option value="wxyz">w x y z</option>
+              <option value="xyzw">x y z w</option>
+            </select>
+          </label>
+          <label class="inline"><input type="checkbox" id="q-canon" checked> <span data-i18n="canon">w ≥ 0</span></label>
+        </div>
+        <div class="nums n4">
+          <label><span id="ql0">w</span><input id="q0" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span id="ql1">x</span><input id="q1" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span id="ql2">y</span><input id="q2" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span id="ql3">z</span><input id="q3" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <p id="q-msg" class="msg" hidden></p>
+        <p class="hint" data-i18n="q_hint">Hamilton convention, scalar part w. q and −q are the same rotation. Changing the order re-displays the same rotation.</p>
+      </div>
+
+      <div class="card" id="card-e">
+        <div class="card-head">
+          <h2 data-i18n="euler">Euler angles</h2>
+          <select id="e-seq" aria-label="sequence"></select>
+          <select id="e-frame" aria-label="frame">
+            <option value="e" data-i18n="extrinsic">extrinsic (fixed axes)</option>
+            <option value="i" data-i18n="intrinsic">intrinsic (body axes)</option>
+          </select>
+          <select id="e-unit" aria-label="unit">
+            <option value="deg">deg</option>
+            <option value="rad">rad</option>
+          </select>
+        </div>
+        <div class="nums n3">
+          <label><span id="el0">X</span><input id="e0" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span id="el1">Y</span><input id="e1" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span id="el2">Z</span><input id="e2" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <p id="e-formula" class="formula"></p>
+        <p id="e-msg" class="msg" hidden></p>
+        <div class="row"><button type="button" id="e-anim" data-i18n="animate">▶ Animate steps</button></div>
+      </div>
+
+      <div class="card" id="card-m">
+        <h2 data-i18n="matrix">Rotation matrix (3×3)</h2>
+        <div class="nums n3 mat">
+          <input id="m0" aria-label="r00" inputmode="decimal" autocomplete="off" spellcheck="false"><input id="m1" aria-label="r01" inputmode="decimal" autocomplete="off" spellcheck="false"><input id="m2" aria-label="r02" inputmode="decimal" autocomplete="off" spellcheck="false">
+          <input id="m3" aria-label="r10" inputmode="decimal" autocomplete="off" spellcheck="false"><input id="m4" aria-label="r11" inputmode="decimal" autocomplete="off" spellcheck="false"><input id="m5" aria-label="r12" inputmode="decimal" autocomplete="off" spellcheck="false">
+          <input id="m6" aria-label="r20" inputmode="decimal" autocomplete="off" spellcheck="false"><input id="m7" aria-label="r21" inputmode="decimal" autocomplete="off" spellcheck="false"><input id="m8" aria-label="r22" inputmode="decimal" autocomplete="off" spellcheck="false">
+        </div>
+        <p id="m-msg" class="msg" hidden></p>
+        <div class="row"><button type="button" id="m-fix" hidden data-i18n="m_fix">Use nearest rotation</button></div>
+      </div>
+
+      <div class="card two">
+        <div>
+          <h2 data-i18n="axisangle">Axis-angle</h2>
+          <div class="nums n4">
+            <label><span>ax</span><input id="a0" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+            <label><span>ay</span><input id="a1" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+            <label><span>az</span><input id="a2" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+            <label><span id="al3">θ (deg)</span><input id="a3" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          </div>
+          <p id="a-msg" class="msg" hidden></p>
+        </div>
+        <div>
+          <h2 data-i18n="rotvec">Rotation vector (so(3) log, rad)</h2>
+          <div class="nums n3">
+            <label><span>rx</span><input id="r0" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+            <label><span>ry</span><input id="r1" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+            <label><span>rz</span><input id="r2" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          </div>
+          <p id="r-msg" class="msg" hidden></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="sixd">6D representation (first two columns of R)</h2>
+        <div class="nums n6">
+          <label><span>r00</span><input id="s0" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span>r10</span><input id="s1" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span>r20</span><input id="s2" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span>r01</span><input id="s3" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span>r11</span><input id="s4" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+          <label><span>r21</span><input id="s5" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <p id="s-msg" class="msg" hidden></p>
+        <p class="hint" data-i18n="sixd_hint">Continuous representation (Zhou et al. 2019). Back to R by Gram-Schmidt: b1 = a1/|a1|, b2 = normalize(a2 − (b1·a2) b1), b3 = b1 × b2.</p>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="snippets">Copy as code</h2>
+        <div class="row wrap">
+          <button type="button" data-snip="urdf">URDF &lt;origin rpy&gt;</button>
+          <button type="button" data-snip="py" data-i18n="snip_py">Python list (quat)</button>
+          <button type="button" data-snip="np" data-i18n="snip_np">numpy (quat)</button>
+          <button type="button" data-snip="npmat" data-i18n="snip_npmat">numpy (matrix)</button>
+          <button type="button" data-snip="ros">ROS Quaternion YAML</button>
+        </div>
+        <textarea id="snip-out" rows="4" readonly spellcheck="false"></textarea>
+        <p id="snip-msg" class="hint"></p>
+      </div>
+    </div>
+
+    <div class="col sticky">
+      <div class="card">
+        <div class="card-head">
+          <h2 data-i18n="viz">Visualizer</h2>
+          <button type="button" id="viz-reset" data-i18n="reset_view">Reset view</button>
+        </div>
+        <canvas id="viz" class="viz" aria-label="3D view"></canvas>
+        <p id="viz-step" class="step"></p>
+        <p class="hint" data-i18n="viz_hint">Drag to orbit. Thin dashed = world frame, thick = rotated body frame (RGB = XYZ). World Z is up.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Compose & compare ============ -->
+<section id="tab-comp" class="tab" hidden>
+  <div class="grid">
+    <div class="col">
+      <div class="card">
+        <div class="card-head">
+          <h2 data-i18n="comp_inputs">Rotations A and B</h2>
+          <label class="inline"><span data-i18n="format">Format</span>
+            <select id="c-fmt">
+              <option value="quat" data-i18n="fmt_quat">quaternion (order above)</option>
+              <option value="euler" data-i18n="fmt_euler">Euler (converter convention)</option>
+              <option value="rotvec" data-i18n="fmt_rotvec">rotation vector (rad)</option>
+            </select>
+          </label>
+        </div>
+        <p id="c-conv" class="hint"></p>
+        <label class="stack"><span>A</span>
+          <span class="row"><input id="ca" class="wide" autocomplete="off" spellcheck="false"><button type="button" id="ca-from" data-i18n="from_conv">← converter</button></span>
+        </label>
+        <label class="stack"><span>B</span>
+          <span class="row"><input id="cb" class="wide" autocomplete="off" spellcheck="false"><button type="button" id="cb-from" data-i18n="from_conv">← converter</button></span>
+        </label>
+        <p id="c-msg" class="msg" hidden></p>
+      </div>
+      <div class="card">
+        <h2 data-i18n="results">Results</h2>
+        <div class="table-wrap"><table id="c-table"><tbody id="c-body"></tbody></table></div>
+        <p class="hint" data-i18n="comp_hint">Products use the Hamilton convention with column vectors: (A·B)v = A(B(v)), i.e. apply B first, then A. A⁻¹B is B expressed relative to A.</p>
+      </div>
+    </div>
+    <div class="col sticky">
+      <div class="card">
+        <h2>SLERP</h2>
+        <label class="stack"><span>t = <b id="c-tval">0.50</b></span>
+          <input type="range" id="c-t" min="0" max="1" step="0.01" value="0.5">
+        </label>
+        <canvas id="c-viz" class="viz" aria-label="SLERP view"></canvas>
+        <p class="hint" data-i18n="slerp_hint">Faint frames: A and B. Solid frame: slerp(A, B, t) along the shortest arc.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Batch ============ -->
+<section id="tab-batch" class="tab" hidden>
+  <div class="card">
+    <h2 data-i18n="batch">Batch convert</h2>
+    <div class="row wrap">
+      <label class="inline"><span data-i18n="input">Input</span><select id="b-from"></select></label>
+      <label class="inline"><span data-i18n="output">Output</span><select id="b-to"></select></label>
+      <button type="button" id="b-run" class="primary" data-i18n="convert">Convert</button>
+      <button type="button" id="b-dl" disabled data-i18n="download">Download CSV</button>
+    </div>
+    <p id="b-conv" class="hint"></p>
+    <div class="two">
+      <label class="stack"><span data-i18n="b_in">One rotation per line (comma / space separated). Blank lines and # comments are skipped; a header line is ignored.</span>
+        <textarea id="b-in" rows="12" spellcheck="false"></textarea></label>
+      <label class="stack"><span>CSV</span>
+        <textarea id="b-out" rows="12" readonly spellcheck="false"></textarea></label>
+    </div>
+    <p id="b-sum" class="hint"></p>
+    <ul id="b-err" class="errors"></ul>
+  </div>
+</section>
+
+<!-- ============ Help ============ -->
+<section id="tab-help" class="tab" hidden>
+  <div class="card prose" lang="en" data-lang="en">
+    <h2>Conventions used by rot-lab</h2>
+    <ul>
+      <li><b>Active rotations, column vectors, right-handed frames:</b> v′ = R v. 90° about +Z takes +X to +Y.</li>
+      <li><b>Hamilton quaternions</b> (i² = j² = k² = ijk = −1). q = (w, x, y, z) with w = cos(θ/2). q·p means “apply p, then q”, matching R(q)R(p). (The JPL convention, used in some aerospace/VIO code, multiplies the other way.)</li>
+      <li><b>Quaternion order:</b> wxyz (MuJoCo, Eigen constructor, Isaac Sim, scipy <code>scalar_first=True</code>) vs xyzw (ROS / tf2 / geometry_msgs, scipy default, PyBullet). Same numbers in the wrong order are a completely different rotation.</li>
+      <li><b>Intrinsic</b> A-B-C: rotate about body A, then the <i>new</i> body B, then the newest C: R = R<sub>A</sub>(a) R<sub>B</sub>(b) R<sub>C</sub>(c).</li>
+      <li><b>Extrinsic</b> A-B-C: rotate about world A, then world B, then world C: R = R<sub>C</sub>(c) R<sub>B</sub>(b) R<sub>A</sub>(a). Therefore extrinsic X-Y-Z (r, p, y) = intrinsic Z-Y-X (y, p, r).</li>
+      <li><b>URDF rpy</b> = extrinsic X-Y-Z in radians. <b>Aerospace yaw-pitch-roll</b> = intrinsic Z-Y′-X″. <b>MuJoCo eulerseq</b>: lowercase letters = intrinsic (default “xyz”), uppercase = extrinsic.</li>
+      <li><b>Gimbal lock:</b> when the middle angle is ±90° (Tait-Bryan) or 0°/180° (proper Euler), the first and third axes line up; only their sum or difference is defined. rot-lab then sets the third angle to 0 and the matrix is still exact.</li>
+      <li><b>Rotation vector</b> = axis·angle (the so(3) logarithm), angle in [0, π]. <b>6D</b> = first two columns of R, mapped back by Gram-Schmidt.</li>
+      <li><b>Privacy:</b> all computation happens in your browser. The share link stores state in the URL fragment (#…), which browsers never send to a server.</li>
+    </ul>
+  </div>
+  <div class="card prose" lang="ko" data-lang="ko">
+    <h2>rot-lab에서 사용하는 규약</h2>
+    <ul>
+      <li><b>능동(active) 회전, 열벡터, 오른손 좌표계:</b> v′ = R v. +Z축으로 90° 회전하면 +X가 +Y로 갑니다.</li>
+      <li><b>Hamilton 쿼터니언</b> (i² = j² = k² = ijk = −1). q = (w, x, y, z), w = cos(θ/2). q·p는 “p를 먼저, 그다음 q”를 적용하며 R(q)R(p)와 같습니다. (일부 항공/VIO 코드의 JPL 규약은 곱셈 순서가 반대입니다.)</li>
+      <li><b>쿼터니언 순서:</b> wxyz (MuJoCo, Eigen 생성자, Isaac Sim, scipy <code>scalar_first=True</code>) vs xyzw (ROS / tf2 / geometry_msgs, scipy 기본값, PyBullet). 같은 숫자라도 순서가 틀리면 완전히 다른 회전입니다.</li>
+      <li><b>Intrinsic(내재)</b> A-B-C: 몸체 A축, 그다음 <i>새로운</i> 몸체 B축, 그다음 C축 순으로 회전: R = R<sub>A</sub>(a) R<sub>B</sub>(b) R<sub>C</sub>(c).</li>
+      <li><b>Extrinsic(외재)</b> A-B-C: 고정된 월드 A축, B축, C축 순으로 회전: R = R<sub>C</sub>(c) R<sub>B</sub>(b) R<sub>A</sub>(a). 따라서 extrinsic X-Y-Z (r, p, y) = intrinsic Z-Y-X (y, p, r).</li>
+      <li><b>URDF rpy</b> = 라디안 단위 extrinsic X-Y-Z. <b>항공 yaw-pitch-roll</b> = intrinsic Z-Y′-X″. <b>MuJoCo eulerseq</b>: 소문자 = intrinsic (기본 “xyz”), 대문자 = extrinsic.</li>
+      <li><b>짐벌 락:</b> 가운데 각이 ±90° (Tait-Bryan) 또는 0°/180° (proper Euler)이면 첫째 축과 셋째 축이 겹쳐 두 각의 합/차만 정의됩니다. 이때 rot-lab은 셋째 각을 0으로 두며, 행렬은 그대로 정확합니다.</li>
+      <li><b>회전 벡터</b> = 축·각 (so(3) 로그), 각도 범위 [0, π]. <b>6D</b> = R의 처음 두 열, Gram-Schmidt로 R 복원.</li>
+      <li><b>개인정보:</b> 모든 계산은 브라우저 안에서만 이뤄집니다. 공유 링크는 URL fragment(#…)에 상태를 담으며, 브라우저는 이를 서버로 보내지 않습니다.</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <span data-i18n="foot">Runs 100% in your browser. No tracking, no network requests.</span>
+  · MIT License · rot-lab contributors
+</footer>
+</body>
+</html>
